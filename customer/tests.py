@@ -166,6 +166,25 @@ class CustomerTest(TestCase):
         self.assertTrue(all(row['name']!='林景和' for row in report['candidates']))
         self.assertNotIn('林景和'.encode(),bytes(ServiceRecord.objects.get().encrypted_report))
 
+    def test_saved_civil_report_allows_missing_city(self):
+        self.sign_in()
+        response = self.save(place='')
+        self.assertEqual(response.status_code, 201)
+        report = self.client.get('/api/customer/records/'+response.json()['record']['id']).json()['report']
+        self.assertEqual(report['data']['place'], '')
+        self.assertFalse(report['analysis']['bazi']['time_correction']['applied'])
+
+    def test_saved_solar_report_resolves_birth_city_once(self):
+        self.sign_in()
+        response = self.save(place='臺北市', timeBasis='apparent_solar')
+        self.assertEqual(response.status_code, 201)
+        report = self.client.get('/api/customer/records/'+response.json()['record']['id']).json()['report']
+        time = report['analysis']['bazi']['time_correction']
+        self.assertEqual(report['analysis']['zone'], 'Asia/Taipei')
+        self.assertEqual(time['longitude'], 121.57)
+        self.assertEqual(time['location']['coordinate_source'], 'city_centre')
+        self.assertEqual(time['location']['label'], '台北')
+
     def test_save_rejects_mixed_flows_and_missing_current_name(self):
         self.sign_in()
         for changes in ({'birthDate':'2000-01-01','birthTime':'12:00'},{'purpose':'rename','mode':'born','dueDate':'','birthDate':'2000-01-01','birthTime':'12:00'}):

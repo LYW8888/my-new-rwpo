@@ -232,14 +232,65 @@ test("多音姓读法贯穿生成和报告", async ({ page }) => {
 
 for (const width of [1280, 390]) test(`真太阳时、旺衰与经典依据保留 ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 950 }); await page.goto("/"); await fillInfo(page, { scenario: "born", date: "2024-02-10", time: "23:05" });
-  await page.getByRole("button", { name: /北京时间 · 调整/ }).click(); await expect(page.locator("[name=zone]")).toBeFocused(); await page.locator("[name=timeBasis]").selectOption("apparent_solar"); await page.locator("[name=locationId]").selectOption("kashgar"); await page.locator("button[type=submit]").click(); await expect(page.locator("#cards .card")).toHaveCount(3);
+  await page.locator("[name=place]").fill("喀什"); await page.getByRole("button", { name: /北京时间 · 调整/ }).click(); await expect(page.locator("[name=zone]")).toBeFocused(); await page.locator("[name=timeBasis]").selectOption("apparent_solar"); await expect(page.locator("[name=longitude]")).toHaveValue("75.99"); await expect(page.locator("select[name=locationId]")).toHaveCount(0); await page.locator("button[type=submit]").click(); await expect(page.locator("#cards .card")).toHaveCount(3);
   await expect(page.getByRole("region", { name: "排盘时间修正" })).toContainText("23:05:00"); await expect(page.getByRole("region", { name: "排盘时间修正" })).toContainText("日柱、时柱有变化");
   const area = page.getByRole("region", { name: "格局旺衰与喜用参考" }); await area.locator(".classical-evidence > summary").click(); await expect(area.locator(".classical-evidence")).toContainText("15 处录文已核对");
-  const report = await downloaded(page); for (const word of ["真太阳钟", "75.99", "四柱分析：", "扶抑喜用参考", "经典原文与计算方法"]) expect(report).toContain(word);
+  await expect(page.locator("#summary .time-basis-note")).toContainText("真太阳时已应用"); await expect(page.locator("#summary .time-basis-note")).toContainText("喀什");
+  const report = await downloaded(page); for (const word of ["真太阳钟", "75.99", "城市中心近似经度（喀什）", "四柱分析：", "扶抑喜用参考", "经典原文与计算方法"]) expect(report).toContain(word);
 });
 
 test("真太阳时缺失经度会展开定位，输入完整可继续", async ({ page }) => {
-  await page.goto("/"); await fillInfo(page); await openDetail(page, ".time-settings"); await page.locator("[name=timeBasis]").selectOption("apparent_solar"); await page.locator(".naming-preferences > summary").click(); await page.locator("button[type=submit]").click(); await expect(page.locator("[name=longitude]")).toBeFocused(); await page.locator("[name=longitude]").fill("120.16"); await page.locator("button[type=submit]").click(); await expect(page.locator("#cards .card")).toHaveCount(3);
+  await page.goto("/"); await fillInfo(page, { place: "未收录地点" }); await openDetail(page, ".time-settings"); await page.locator("[name=timeBasis]").selectOption("apparent_solar"); await page.locator(".naming-preferences > summary").click(); await page.locator("button[type=submit]").click(); await expect(page.locator("[name=longitude]")).toBeFocused(); await page.locator("[name=longitude]").fill("120.16"); await page.locator("button[type=submit]").click(); await expect(page.locator("#cards .card")).toHaveCount(3);
+});
+
+for (const scenario of ["due_date", "born", "rename"]) test(`民用时间不填城市也能完成${scenario}`, async ({ page }) => {
+  await page.setViewportSize({width:390,height:950}); await page.goto("/");
+  await fillInfo(page, {scenario, place:"", date:scenario === "due_date" ? "2099-12-23" : "2024-02-10"});
+  await expect(page.locator("#placeHelp")).toContainText("可留空");
+  if (scenario === "rename") {
+    await page.locator("button[type=submit]").click(); await expect(page.locator("#formNameReview")).toBeVisible();
+    await expect(page.locator(".simple-review .time-basis-note")).toContainText("按民用时间排盘");
+  }
+  const pending=page.waitForRequest("**/api/analyze");
+  if (scenario === "rename") await page.getByRole("button", {name:"根据这份报告推荐新名字",exact:true}).click();
+  else await page.locator("button[type=submit]").click();
+  const data=(await pending).postDataJSON(); expect(data.place).toBe(""); expect(data).not.toHaveProperty("longitude"); expect(data).not.toHaveProperty("locationId");
+  await expect(page.locator("#cards .card")).toHaveCount(3); await expect(page.locator("#summary")).toContainText("地点未填写");
+  await expect(page.locator("#summary .time-basis-note")).toContainText("不用于经度修正");
+  expect(await downloaded(page)).toContain("出生地点：未填写");
+});
+
+test("城市只选一次，更换地点清除旧经度，手动0经度可用", async ({ page }) => {
+  await page.goto("/"); await fillInfo(page); await openDetail(page, ".time-settings"); await page.locator("[name=timeBasis]").selectOption("apparent_solar");
+  await expect(page.locator("[name=longitude]")).toHaveValue("120.16");
+  await page.locator("[name=longitude]").fill(""); await page.getByRole("button", {name:"恢复杭州城市中心经度",exact:true}).click(); await expect(page.locator("[name=longitude]")).toHaveValue("120.16");
+  await page.locator("[name=longitude]").fill("120.15"); await page.locator("[name=place]").fill("杭州市"); await expect(page.locator("[name=longitude]")).toHaveValue("120.15");
+  await page.locator("[name=place]").fill("成都"); await expect(page.locator("[name=longitude]")).toHaveValue("104.07");
+  await page.locator("[name=place]").fill(""); await expect(page.locator("[name=longitude]")).toHaveValue(""); await expect(page.locator("[name=locationId]")).toHaveValue("");
+  await page.locator("button[type=submit]").click(); await expect(page.locator("[name=longitude]")).toBeFocused();
+  await page.locator("[name=longitude]").fill("0"); const pending=page.waitForResponse("**/api/analyze"); await page.locator("button[type=submit]").click();
+  await expect(page.locator("#placeHelp")).toContainText("已填写手动经度0°E");
+  const value=await (await pending).json(); expect(value.analysis.bazi.time_correction).toMatchObject({applied:true,longitude:0,location:{coordinate_source:"manual"}});
+  await expect(page.locator("#cards .card")).toHaveCount(3); await expect(page.locator("#summary .time-basis-note")).toContainText("0°E"); await expect(page.locator("#summary .time-basis-note")).toContainText("手动填写经度");
+});
+
+test("真太阳时切回民用时间时不提交经度，重新启用仍保留调整", async ({ page }) => {
+  await page.goto("/"); await fillInfo(page,{place:"臺北市"}); await openDetail(page,".time-settings"); await page.locator("[name=timeBasis]").selectOption("apparent_solar");
+  await expect(page.locator("[name=longitude]")).toHaveValue("121.57"); await expect(page.locator("[name=zone]")).toHaveValue("Asia/Taipei");
+  await page.locator("[name=longitude]").fill("121.56"); await page.locator("[name=timeBasis]").selectOption("civil");
+  const pending=page.waitForRequest("**/api/analyze"); await page.locator("button[type=submit]").click(); const data=(await pending).postDataJSON(); expect(data).not.toHaveProperty("longitude"); expect(data).not.toHaveProperty("locationId");
+  await expect(page.locator("#cards .card")).toHaveCount(3); await page.locator("[name=timeBasis]").selectOption("apparent_solar"); await expect(page.locator("[name=longitude]")).toHaveValue("121.56");
+});
+
+test("改名换城市后重新分析，并把同一修正依据用于推荐", async ({ page }) => {
+  await page.goto("/"); await fillInfo(page,{scenario:"rename",currentName:"李明哲",date:"2024-02-10"}); await openDetail(page,".time-settings"); await page.locator("[name=timeBasis]").selectOption("apparent_solar");
+  await page.locator("button[type=submit]").click(); await expect(page.locator("#formNameReview")).toBeVisible();
+  await page.locator("[name=place]").fill("成都"); await expect(page.locator(".review-stale")).toBeVisible();
+  const pending=page.waitForResponse("**/api/name-review"); await page.getByRole("button",{name:"重新分析现用姓名",exact:true}).click();
+  const review=await (await pending).json(); expect(review.analysis.bazi.time_correction.location.label).toBe("成都");
+  const recommendation=page.waitForResponse("**/api/analyze"); await page.getByRole("button",{name:"根据这份报告推荐新名字",exact:true}).click();
+  const value=await (await recommendation).json(); expect(value.analysis.bazi.time_correction).toEqual(review.analysis.bazi.time_correction);
+  await expect(page.locator("#summary .time-basis-note")).toContainText("成都");
 });
 
 for (const [status, body, text] of [[404, "missing", "未接通起名接口"], [502, "<html>bad gateway</html>", "暂时不可用"], [200, "<html>static page</html>", "无法识别"]]) test(`接口错误${status}-${text}可见并支持重试`, async ({ page }) => {

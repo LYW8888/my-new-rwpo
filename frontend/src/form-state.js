@@ -4,6 +4,11 @@ export function formRequest(form) {
   const data = Object.fromEntries(fd.entries());
   delete data.style;
   delete data.scenario;
+  data.place = String(data.place || "").trim();
+  if (data.timeBasis !== "apparent_solar") {
+    delete data.longitude;
+    delete data.locationId;
+  }
   data.styles = fd.getAll("style");
   data.surname = String(data.surname || "").trim();
   if (data.mode === "born") {

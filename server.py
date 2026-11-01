@@ -150,7 +150,9 @@ def analyze(payload: dict, *, recommend: bool = True) -> dict:
     gender = str(payload.get("gender", "unknown"))
     if gender not in ("male", "female", "unknown"):
         raise ValueError("gender must be male, female, or unknown")
-    zone = str(payload.get("zone", "Asia/Shanghai"))
+    place = str(payload.get("place") or "").strip()
+    city = solar_time.selected_city(payload)
+    zone = str(payload.get("zone", city["zone"] if city else "Asia/Shanghai"))
     if zone not in ZONE_LABELS:
         raise ValueError("zone must be Asia/Shanghai, Asia/Taipei, or Asia/Hong_Kong")
     zone_label = ZONE_LABELS[zone]
@@ -205,9 +207,6 @@ def analyze(payload: dict, *, recommend: bool = True) -> dict:
         raise ValueError("candidateCount must be an integer from 1 to 11") from exc
     if candidate_count < 1 or candidate_count > 11:
         raise ValueError("candidateCount must be an integer from 1 to 11")
-    place = str(payload.get("place", "")).strip()
-    if not place:
-        raise ValueError("place is required")
     parents = str(payload.get("parents", "")).strip()
     current_name = str(payload.get("currentName", "")).strip()
     if purpose == "rename":
@@ -341,6 +340,7 @@ def analyze(payload: dict, *, recommend: bool = True) -> dict:
             "gender": gender_label,
             "zone": zone,
             "zone_label": zone_label,
+            "place": place,
             "time": basis_time,
             "due_date": due_date,
             "due_time": due_time if due_date else "",

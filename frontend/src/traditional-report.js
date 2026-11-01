@@ -11,6 +11,7 @@ export function calculationLines(analysis) {
     if (time.applied)
       lines.push(
         `真太阳钟：${time.clock_time}；经度 ${time.longitude}°；经度/时区项 ${time.longitude_minutes} 分钟；均时差 ${time.equation_of_time_minutes} 分钟；合计 ${time.total_minutes} 分钟`,
+        `经度来源：${time.location?.coordinate_source === "city_centre" ? "城市中心近似经度" : time.location?.coordinate_source === "manual" ? "手动填写经度" : "本记录未保存来源"}${time.location?.label ? `（${time.location.label}）` : ""}`,
         `修正公式：${time.formula}；历史UTC偏移 ${time.utc_offset_minutes} 分钟（含夏令时 ${time.dst_minutes} 分钟）`,
         `民用四柱：${chart.civil_pillars.map((p) => `${p.label} ${p.ganzhi}`).join("、")}；变化 ${time.pillar_changes.join("、") || "无"}`,
         time.notice,

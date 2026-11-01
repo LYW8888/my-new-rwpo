@@ -6,6 +6,21 @@ import CandidateEvidence, { sourceLabel } from "./CandidateEvidence.jsx";
 import NameReview from "./NameReview.jsx";
 import { workflowLabel } from "./form-state.js";
 import { readingNotes } from "./utils.js";
+import { longitudeText } from "./location-state.js";
+
+export function ClockSummary({ chart }) {
+  const time = chart?.time_correction;
+  if (!time) return null;
+  const minutes = Number(time.total_minutes);
+  const source = time.location?.coordinate_source;
+  return <div className="time-basis-note" aria-label="本次排盘时间口径">
+    <strong>{time.applied ? "真太阳时已应用" : "按民用时间排盘"}</strong>
+    {time.applied ? <>
+      <p>原始时间：{time.civil_time}<br />修正时间：{time.clock_time}{Number.isFinite(minutes) && `（${minutes < 0 ? "提前" : "延后"}${Math.abs(minutes).toFixed(2)}分钟）`}</p>
+      <small>{time.location?.label ? `${time.location.label} · ` : ""}{longitudeText(time.longitude)} · {source === "city_centre" ? "城市中心近似经度" : source === "manual" ? "手动填写经度" : "经度来源未记录"}。{time.pillar_changes?.length ? `${time.pillar_changes.join("、")}发生变化。` : "本次四柱与民用时间排盘相同。"}</small>
+    </> : <small>采用所选时区的民用时间，出生城市不用于经度修正。</small>}
+  </div>;
+}
 
 function Boundary({ boundary }) {
   if (!boundary) return null;
@@ -629,7 +644,7 @@ export default function Results({
               修改出生信息
             </button>
             <small>
-              {analysis.scenario} · {analysis.gender} · {data.place}
+              {analysis.scenario} · {analysis.gender} · {data.place || "地点未填写"}
               <br />
               {analysis.bazi.local_time}
               {analysis.bazi.reference
@@ -642,6 +657,7 @@ export default function Results({
                 {analysis.naming_reference.explanation}
               </p>
             )}
+            <ClockSummary chart={analysis.bazi} />
           </div>
           <a href="#traditionalBasis">查看四柱与起卦依据 ↓</a>
         </div>

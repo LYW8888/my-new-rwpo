@@ -87,7 +87,7 @@ class SolarTimeTest(unittest.TestCase):
 
     def test_invalid_coordinates_and_missing_location_are_not_guessed(self):
         with self.assertRaisesRegex(ValueError, "longitude is required"):
-            solar_time.options({"timeBasis": "apparent_solar", "place": "杭州"})
+            solar_time.options({"timeBasis": "apparent_solar", "place": "未收录的城市"})
         for value in (True, "NaN", "Infinity", 181, -181, {}, []):
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, "longitude must"):
                 solar_time.options({"timeBasis": "apparent_solar", "longitude": value})
@@ -95,6 +95,37 @@ class SolarTimeTest(unittest.TestCase):
             solar_time.options({"locationId": "not-listed"})
         with self.assertRaisesRegex(ValueError, "timeBasis"):
             solar_time.options({"timeBasis": "guess"})
+
+    def test_birth_city_matches_listed_names_and_safe_aliases(self):
+        for place, identifier in (("杭州", "hangzhou"), (" 杭州市 ", "hangzhou"), ("臺北市", "taipei"), ("乌鲁木齐市", "urumqi")):
+            with self.subTest(place=place):
+                result = solar_time.options({"timeBasis":"apparent_solar", "place":place})
+                self.assertEqual(result["location"]["id"], identifier)
+                self.assertEqual(result["location"]["coordinate_source"], "city_centre")
+        for place in ("", "杭州附近", "杭州市西湖区", "河南南阳"):
+            self.assertIsNone(solar_time.find_city(place))
+
+    def test_conflicting_city_identifier_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "locationId conflicts"):
+            solar_time.options({"timeBasis":"apparent_solar", "place":"杭州", "locationId":"chengdu"})
+
+    def test_manual_coordinates_override_matched_city_and_allow_missing_label(self):
+        manual = solar_time.options({"timeBasis":"apparent_solar", "place":"杭州", "longitude":"120.15"})
+        self.assertEqual(manual["longitude"], 120.15)
+        self.assertEqual(manual["location"]["coordinate_source"], "manual")
+        zero = server.analyze({"surname":"林", "dueDate":"2099-01-01", "timeBasis":"apparent_solar", "longitude":0})["analysis"]
+        self.assertEqual(zero["bazi"]["time_correction"]["longitude"], 0)
+        self.assertEqual(zero["bazi"]["time_correction"]["location"]["coordinate_source"], "manual")
+
+    def test_birth_city_changes_solar_clock_and_downstream_hour(self):
+        base = {"surname":"林", "mode":"born", "birthDate":"2024-02-10", "birthTime":"12:00", "timeBasis":"apparent_solar"}
+        east = server.analyze({**base, "place":"杭州"})["analysis"]
+        west = server.analyze({**base, "place":"成都"})["analysis"]
+        a, b = east["bazi"]["time_correction"], west["bazi"]["time_correction"]
+        self.assertAlmostEqual(a["total_minutes"] - b["total_minutes"], (120.16 - 104.07) * 4, places=5)
+        self.assertNotEqual(east["bazi"]["pillars"][3], west["bazi"]["pillars"][3])
+        self.assertNotEqual(east["gua"]["inputs"]["hour_branch"], west["gua"]["inputs"]["hour_branch"])
+        self.assertEqual(east["bazi"]["pillars"][:2], west["bazi"]["pillars"][:2])
 
     def test_api_uses_actual_time_for_solar_chart_and_gua(self):
         base = {

@@ -76,9 +76,23 @@ class ServerRulesTest(unittest.TestCase):
             with self.subTest(invalid_time=invalid_time):
                 with self.assertRaisesRegex(ValueError, "birthTime"):
                     server.analyze({"mode":"born", "surname":"林", "birthDate":"2024-04-16", "birthTime":invalid_time, "place":"杭州", "length":2, "gender":"unknown"})
-    def test_place_is_required_for_analysis(self):
-        with self.assertRaisesRegex(ValueError, "place"):
-            server.analyze({"mode":"due_date", "surname":"林", "dueDate":"2099-01-01", "length":2, "gender":"unknown"})
+    def test_place_is_optional_and_civil_chart_does_not_guess_coordinates(self):
+        base = {"surname":"林", "dueDate":"2099-01-01"}
+        missing = server.analyze(base)
+        supplied = server.analyze({**base, "place":"杭州"})
+        self.assertEqual(missing["analysis"]["place"], "")
+        self.assertFalse(missing["analysis"]["bazi"]["time_correction"]["applied"])
+        self.assertEqual(missing["analysis"]["bazi"]["pillars"], supplied["analysis"]["bazi"]["pillars"])
+        self.assertEqual(missing["candidates"], supplied["candidates"])
+
+    def test_city_supplies_timezone_without_overriding_explicit_choice(self):
+        base = {"surname":"林", "mode":"born", "birthDate":"1990-06-15", "birthTime":"12:00", "place":"臺北市"}
+        inferred = server.analyze(base)["analysis"]
+        explicit = server.analyze({**base, "zone":"Asia/Shanghai"})["analysis"]
+        self.assertEqual(inferred["zone"], "Asia/Taipei")
+        self.assertEqual(explicit["zone"], "Asia/Shanghai")
+        self.assertIn("+0800", inferred["bazi"]["local_time"])
+        self.assertIn("+0900", explicit["bazi"]["local_time"])
     def test_candidate_count_is_customizable_end_to_end(self):
         result = server.analyze({"mode":"due_date", "surname":"林", "dueDate":"2099-01-01", "place":"杭州", "length":2, "candidateCount":5, "gender":"unknown"})
         self.assertEqual(result["analysis"]["candidate_count"], 5)

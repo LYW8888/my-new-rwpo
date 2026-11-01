@@ -8,6 +8,7 @@ from datetime import timedelta, timezone
 from math import cos, sin, tan, radians, degrees, isfinite
 import json
 from pathlib import Path
+from unicodedata import normalize
 
 VERSION = "apparent-solar-v1"
 
@@ -18,18 +19,34 @@ def locations():
     )
 
 
+def find_city(place):
+    def key(value):
+        return "".join(normalize("NFKC", str(value or "")).split()).replace("臺", "台").removesuffix("市")
+
+    name = key(place)
+    return next((city for city in locations()["cities"] if key(city["name"]) == name), None) if name else None
+
+
+def selected_city(payload):
+    selected = payload.get("locationId", "") or ""
+    if not isinstance(selected, str):
+        raise ValueError("locationId must identify a listed city")
+    matched = find_city(payload.get("place"))
+    if not selected:
+        return matched
+    city = next((city for city in locations()["cities"] if city["id"] == selected), None)
+    if city is None:
+        raise ValueError("locationId must identify a listed city")
+    if matched and matched["id"] != city["id"]:
+        raise ValueError("locationId conflicts with place; select the birth city again")
+    return city
+
+
 def options(payload):
     basis = payload.get("timeBasis", "civil")
     if basis not in ("civil", "apparent_solar"):
         raise ValueError("timeBasis must be civil or apparent_solar")
-    selected = payload.get("locationId", "") or ""
-    if not isinstance(selected, str):
-        raise ValueError("locationId must identify a listed city")
-    city = (
-        next((x for x in locations()["cities"] if x["id"] == selected), None) if selected else None
-    )
-    if selected and city is None:
-        raise ValueError("locationId must identify a listed city")
+    city = selected_city(payload)
     value = payload.get("longitude")
     manual = value is not None and value != ""
     if not manual and city:

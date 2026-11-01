@@ -138,7 +138,7 @@ export function friendlyError(message) {
     [/birthTime must use/i, "出生时间格式不正确，请重新选择。"],
     [/length must be/i, "名字字数请选择 1–3 个字。"],
     [/candidateCount must be/i, "生成数量需要填写 1–11 个整数。"],
-    [/place is required/i, "请填写出生地点，便于生成地域和时区参考。"],
+    [/place is required/i, "请填写出生城市后重试。"],
     [/currentName must be/i, "请填写以当前姓氏开头的完整现用姓名，仅支持汉字，最多20字。"],
     [/due date flow cannot include actual/i, "预产期起名只填写预产期；已经出生请选择已出生起名。"],
     [/born flow cannot include due date/i, "已出生起名与改名只使用实际出生时间，请移除预产期信息。"],
@@ -157,6 +157,7 @@ export function friendlyError(message) {
     ],
     [/timeBasis must be/i, "请选择民用时钟或真太阳时。"],
     [/locationId must/i, "请选择列表中的城市，或手动填写经度。"],
+    [/locationId conflicts with place/i, "出生城市与经度来源不一致，请重新选择出生城市。"],
     [/elementPreference must be/i, "请选择列表中的传统文化选字参考。"],
     [/request too large/i, "提交内容过大，请减少文字后重试。"],
   ];

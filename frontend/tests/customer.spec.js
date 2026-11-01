@@ -7,7 +7,7 @@ async function generate(page) {
   await page.locator(".naming-preferences > summary").click();
   await page.locator(".time-settings > summary").click();
   await page.locator("[name=timeBasis]").selectOption("apparent_solar");
-  await page.locator("[name=locationId]").selectOption("hangzhou");
+  await expect(page.locator("[name=longitude]")).toHaveValue("120.16");
   await page.locator(".naming-constraints > summary").click();
   await page.locator("[name=elementPreference]").selectOption("水");
   await page

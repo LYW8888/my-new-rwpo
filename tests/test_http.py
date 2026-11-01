@@ -147,3 +147,15 @@ class HttpHandlerTest(unittest.TestCase):
         response=json.loads(body)
         self.assertEqual(len(response['candidates']),7)
         self.assertTrue(all('安' in x['given'] for x in response['candidates']))
+
+    def test_optional_birth_city_and_automatic_solar_coordinates(self):
+        base = {'surname':'林', 'mode':'due_date', 'dueDate':'2099-01-01'}
+        for extra, applied in (({}, False), ({'place':'臺北市', 'timeBasis':'apparent_solar'}, True)):
+            with self.subTest(extra=extra):
+                status, _, body = self.request('POST', '/api/analyze', json.dumps({**base, **extra}), {'Content-Type':'application/json'})
+                self.assertEqual(status, 200)
+                analysis = json.loads(body)['analysis']
+                self.assertEqual(analysis['bazi']['time_correction']['applied'], applied)
+                if applied:
+                    self.assertEqual(analysis['zone'], 'Asia/Taipei')
+                    self.assertEqual(analysis['bazi']['time_correction']['longitude'], 121.57)

@@ -8,9 +8,10 @@ import React, {
   useState,
 } from "react";
 import { formRequest, inferSurname, nameReviewKey } from "./form-state.js";
+import { longitudeText, matchCity, withPlace } from "./location-state.js";
 import { requestNameReview } from "./analysis.js";
 import NameReview from "./NameReview.jsx";
-import { Chart } from "./Results.jsx";
+import { Chart, ClockSummary } from "./Results.jsx";
 import LOCATIONS from "../../data/locations.json";
 import { friendlyError, getClockInZone } from "./utils.js";
 
@@ -29,7 +30,7 @@ export default forwardRef(function NamingForm(
   const [currentName, setCurrentName] = useState("");
   const [surnameOverride, setSurnameOverride] = useState(null);
   const [people, setPeople] = useState(() => {
-    const fresh = () => ({ dates: { dueDate: "", dueTime: "12:00", birthDate: "", birthTime: "" }, place: "", zone: "Asia/Shanghai", timeBasis: "civil", longitude: "", locationId: "", gender: "unknown" });
+    const fresh = () => ({ dates: { dueDate: "", dueTime: "12:00", birthDate: "", birthTime: "" }, place: "", zone: "Asia/Shanghai", zoneManual: false, timeBasis: "civil", longitude: "", locationId: "", gender: "unknown" });
     return { newborn: fresh(), rename: fresh() };
   });
   const [length, setLength] = useState("2");
@@ -49,11 +50,12 @@ export default forwardRef(function NamingForm(
     setPeople(previous => ({ ...previous, [personKey]: { ...previous[personKey], [name]: typeof value === "function" ? value(previous[personKey][name]) : value } }));
   }
   const setDates = value => updatePerson("dates", value);
-  const setPlace = value => updatePerson("place", value);
-  const setZone = value => updatePerson("zone", value);
+  const setZone = value => setPeople(previous => ({ ...previous, [personKey]: { ...previous[personKey], zone: value, zoneManual: true } }));
   const setTimeBasis = value => updatePerson("timeBasis", value);
   const setLongitude = value => updatePerson("longitude", value);
-  const setLocationId = value => updatePerson("locationId", value);
+  const city = matchCity(place, LOCATIONS.cities);
+  const cityCoordinate = city && longitude !== "" && Number(longitude) === city.longitude;
+  const zoneLabel = zone === "Asia/Shanghai" ? "北京时间" : zone === "Asia/Taipei" ? "台北时间" : "香港时间";
   const surname = rename ? surnameOverride ?? inferSurname(currentName) : newbornSurname;
   const locked = busy || reviewBusy;
   const reviewCurrent = rename && !!review && nameReviewKey(draft) === review.key;
@@ -132,7 +134,6 @@ export default forwardRef(function NamingForm(
         if (hours * 60 + minutes > clock.minutes) return fail("实际出生时间不能晚于当前时间。", form.elements.birthTime);
       }
     }
-    if (!place.trim()) return fail("请填写出生城市或地区。", form.elements.place);
     if (includePreferences) {
       const chars = name => new Set([...(form.elements[name]?.value || "")].filter(c => /\p{Script=Han}/u.test(c)));
       const required = chars("requiredChars");
@@ -153,7 +154,7 @@ export default forwardRef(function NamingForm(
     clearError();
     requestAnimationFrame(() => {
       const form = formRef.current;
-      if (fieldName) return focus(form.elements[fieldName]);
+      if (fieldName) return focus(form.elements[fieldName === "locationId" ? "place" : fieldName]);
       if (index === 2) return focus(form.querySelector("#preferencesTitle"));
       focus(form.querySelector(index === 1 ? "#birthInfoTitle" : "#basicInfoTitle"));
     });
@@ -201,18 +202,8 @@ export default forwardRef(function NamingForm(
   }));
 
   function setCity(value) {
-    setPlace(value);
-    const city = LOCATIONS.cities.find(c => c.name === value);
-    if (city) setZone(city.zone);
-  }
-  function selectCity(id) {
-    setLocationId(id);
-    const city = LOCATIONS.cities.find(c => c.id === id);
-    if (city) {
-      setPlace(city.name);
-      setZone(city.zone);
-      setLongitude(String(city.longitude));
-    }
+    setPeople(previous => ({ ...previous, [personKey]: withPlace(previous[personKey], value, LOCATIONS.cities) }));
+    if (["longitude", "place"].includes(invalidField.current?.name)) clearError();
   }
   function surnameField() {
     return <label><span className="field-label">姓氏</span>
@@ -224,7 +215,7 @@ export default forwardRef(function NamingForm(
       <p className="eyebrow">A NAME BEGINS HERE</p>
       <h2>填好基本信息，<br />让名字有个好开始。</h2>
       <p>偏好可以以后再调。先看看适合的名字与依据。</p>
-      <div className="simple-flow-note"><b>{rename ? "先了解现名，再推荐新名" : "一页填写，直接生成"}</b><span>{rename ? "填写资料 → 现名报告 → 推荐改名" : "姓氏、时间、地点填好即可，其他设置都可选。"}</span></div>
+      <div className="simple-flow-note"><b>{rename ? "先了解现名，再推荐新名" : "一页填写，直接生成"}</b><span>{rename ? "填写资料 → 现名报告 → 推荐改名" : "填好姓氏和时间即可，城市和偏好按需补充。"}</span></div>
     </div>
     <form id="namingForm" ref={formRef} noValidate aria-busy={locked} onChange={event => {
       if (invalidField.current?.name === event.target.name) clearError();
@@ -252,9 +243,10 @@ export default forwardRef(function NamingForm(
         <div className="grid birth-fields">
           <label className={!born ? "due-date-field" : ""}><span className="field-label">{born ? "实际出生日期" : "预产期日期"}</span><input type="date" name={born ? "birthDate" : "dueDate"} min="1900-01-01" max="2100-12-31" required value={born ? dates.birthDate : dates.dueDate} onChange={e => setDates(v => ({ ...v, [born ? "birthDate" : "dueDate"]: e.target.value }))} /></label>
           {born && <label><span className="field-label">准确出生时间</span><input name="birthTime" type="time" required value={dates.birthTime} onChange={e => setDates(v => ({ ...v, birthTime: e.target.value }))} /></label>}
-          <label className={born ? "place-field full-width" : "place-field"}><span className="field-label">{born ? "出生城市或地区" : "预计出生城市或地区"}</span><input name="place" value={place} onChange={e => setCity(e.target.value)} list="birthCities" required placeholder="例如：杭州" autoComplete="off" /><datalist id="birthCities">{LOCATIONS.cities.map(c => <option key={c.id} value={c.name} />)}</datalist></label>
+          <label className={born ? "place-field full-width" : "place-field"}><span className="field-label">{born ? "出生城市或地区" : "预计出生城市或地区"}<span className="optional-label">可选</span></span><input name="place" value={place} onChange={e => setCity(e.target.value)} list="birthCities" placeholder="选城市可自动带入时区与经度" autoComplete="off" aria-describedby="placeHelp" /><datalist id="birthCities">{LOCATIONS.cities.map(c => <option key={c.id} value={c.name} />)}</datalist></label>
         </div>
-        <p className="simple-time-note">{born ? "请按出生记录填写。" : "预产期可填未来日期，默认12:00作参考。"}<button type="button" onClick={() => edit(1, "zone")}>{zone === "Asia/Shanghai" ? "北京时间" : zone === "Asia/Taipei" ? "台北时间" : "香港时间"} · 调整</button></p>
+        <p id="placeHelp" className="place-help">{city ? `已匹配${city.name}，${cityCoordinate ? `城市中心约${longitudeText(longitude)}` : longitude !== "" ? `自定义经度${longitudeText(longitude)}` : "请补充经度"}。` : longitude !== "" ? `已填写手动经度${longitudeText(longitude)}。` : place.trim() ? "该地点尚未匹配经度，可保留文字；真太阳时需手动填写经度。" : "可留空；选城市后自动带入时区和经度。"}{timeBasis === "civil" ? "当前按民用时间排盘，不作经度修正。" : "已启用真太阳时，经度将用于排盘修正。"}</p>
+        <p className="simple-time-note">{born ? "请按出生记录填写。" : "预产期可填未来日期，默认12:00作参考。"}<button type="button" onClick={() => edit(1, "zone")}>{zoneLabel} · 调整</button></p>
       </fieldset>
       <details className="naming-preferences">
         <summary>偏好与名字设置<span>{length}字名 · {draft.candidateCount || 3}个方案 · 可选</span></summary>
@@ -284,7 +276,12 @@ export default forwardRef(function NamingForm(
               {!born && <label>预产期参考时间<input name="dueTime" type="time" value={dates.dueTime} onChange={e => setDates(v => ({ ...v, dueTime: e.target.value }))} /></label>}
             </div>
             <label>日柱与时柱时间口径<select name="timeBasis" value={timeBasis} onChange={e => setTimeBasis(e.target.value)}><option value="civil">当地民用时钟</option><option value="apparent_solar">真太阳时（按经度修正）</option></select></label>
-            {timeBasis === "apparent_solar" && <div className="grid solar-fields"><label>城市中心（可选）<select name="locationId" value={locationId} onChange={e => selectCity(e.target.value)}><option value="">手动输入经度</option>{LOCATIONS.cities.map(c => <option key={c.id} value={c.id}>{c.name} · {c.longitude}°E</option>)}</select></label><label>出生地经度<input name="longitude" type="number" min="-180" max="180" step="0.000001" required value={longitude} onChange={e => setLongitude(e.target.value)} /><small>城市中心是近似值，可以改为实际出生地经度。</small></label></div>}
+            {timeBasis === "apparent_solar" && <div className="solar-fields">
+              <input type="hidden" name="locationId" value={locationId} />
+              <p className="coordinate-source">{cityCoordinate ? `已使用${city.name}城市中心经度，无需重复选城市。` : "可以回到上方选择城市自动带入，或填写实际出生地经度。"}<button type="button" onClick={() => edit(1, "place")}>{city ? "更换城市" : "选择城市"}</button></p>
+              {city && !cityCoordinate && <button type="button" className="restore-coordinate" onClick={() => { setLongitude(String(city.longitude)); if (invalidField.current?.name === "longitude") clearError(); }}>恢复{city.name}城市中心经度</button>}
+              <label><span className="field-label">出生地经度</span><input name="longitude" type="number" min="-180" max="180" step="0.000001" required value={longitude} onChange={e => setLongitude(e.target.value)} /><small>东经填正数，西经填负数；0也是有效经度。城市中心为近似值，可按实际地点调整。</small></label>
+            </div>}
           </details>
         </fieldset>
       </details>
@@ -295,8 +292,9 @@ export default forwardRef(function NamingForm(
       {rename && review && <section className="simple-review" aria-label="现名报告与改名推荐">
         <h3 id="currentReviewTitle" tabIndex={-1}>先看现名，再选新名</h3>
         {reviewCurrent ? <>
-          <p className="review-basis">分析依据：{dates.birthDate} {dates.birthTime} · {place}</p>
+          <p className="review-basis">分析依据：{dates.birthDate} {dates.birthTime} · {place || "地点未填写"}</p>
           <NameReview review={review.payload.analysis.name_review} id="formNameReview" compact />
+          <ClockSummary chart={review.payload.analysis.bazi} />
           <details className="review-chart"><summary>查看本次四柱与起卦依据</summary><Chart analysis={review.payload.analysis} id="reviewTraditionalBasis" /></details>
           <div className="review-next"><button type="button" className="secondary" onClick={() => edit(0)}>修改资料</button><button type="button" className="primary" disabled={locked} onClick={() => generate(true)}>{busy ? "正在推荐…" : "根据这份报告推荐新名字"}</button></div>
         </> : <div className="review-stale"><p>姓名或出生资料已修改，请重新分析现名后继续。</p><button type="button" className="primary" disabled={locked} onClick={analyzeCurrentName}>重新分析现用姓名</button></div>}
